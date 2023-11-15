@@ -1,1 +1,5 @@
 /.idea/
+/cv_playground.iml
+/data/
+/out/
+/face_detection/models/
