@@ -20,6 +20,7 @@ from face_detection import utils
 
 DISSIMILARITY_THRESHOLD: float = 0.65
 
+ALLOWED_IMAGE_TYPES = ['.jpg','.jpeg']
 
 def euclidian_distance(vectors: List) -> float:
     v1, v2 = vectors
@@ -124,7 +125,7 @@ class ATTSiameseNNDataLoader(SiameseNNDataLoader):
         self.last_train_batch_idx = 0
         self.last_test_batch_idx = 0
 
-    def load(self, train_test_split: float = 0.75, reload: bool = True) -> tuple[
+    def load(self, train_test_split: float = 0.75, reload: bool = True, split_by_class:bool = False) -> tuple[
         tuple[np.ndarray, np.ndarray], tuple[np.ndarray, np.ndarray]
     ]:
         '''
@@ -139,22 +140,39 @@ class ATTSiameseNNDataLoader(SiameseNNDataLoader):
         if self.img_train is None or reload:
             class_dirs: np.ndarray = np.array([x for x in self.root_dir.iterdir() if x.is_dir()])
             num_classes: int = len(class_dirs)
+            if split_by_class:
+                # choose the classes in train and test
+                idx_samples = np.random.random_sample(num_classes)
+                train_class_dirs: np.ndarray = class_dirs[idx_samples <= train_test_split]
+                test_class_dirs: np.ndarray = class_dirs[idx_samples > train_test_split]
 
-            # choose the classes in train and test
-            idx_samples = np.random.random_sample(num_classes)
-            train_class_dirs: np.ndarray = class_dirs[idx_samples <= train_test_split]
-            test_class_dirs: np.ndarray = class_dirs[idx_samples > train_test_split]
-
-            img_train, class_train, img_test, class_test = [], [], [], []
-            print(f"iterating through {num_classes} classes (train={train_test_split}...")
-            for dir in tqdm(class_dirs):
-                for f in sorted([x for x in dir.iterdir() if x.is_file()]):
-                    if dir in train_class_dirs:
-                        img_train.append(f)
-                        class_train.append(np.where(train_class_dirs == dir)[0][0])
-                    else:
-                        img_test.append(f)
-                        class_test.append(np.where(test_class_dirs == dir)[0][0])
+                img_train, class_train, img_test, class_test = [], [], [], []
+                print(f"iterating through {num_classes} classes (train={train_test_split}...")
+                for dir in tqdm(class_dirs):
+                    for f in sorted([x for x in dir.iterdir() if x.is_file()]):
+                        if f.suffix not in ALLOWED_IMAGE_TYPES:
+                            continue
+                        if dir in train_class_dirs:
+                            img_train.append(f)
+                            class_train.append(np.where(train_class_dirs == dir)[0][0])
+                        else:
+                            img_test.append(f)
+                            class_test.append(np.where(test_class_dirs == dir)[0][0])
+            else:
+                imgs, classes = [], []
+                for dir in tqdm(class_dirs):
+                    for f in sorted([x for x in dir.iterdir() if x.is_file()]):
+                        if f.suffix not in ALLOWED_IMAGE_TYPES:
+                            continue
+                        imgs.append(f)
+                        classes.append(np.where(class_dirs == dir)[0][0])
+                imgs = np.array(imgs)
+                classes = np.array(classes)
+                idx_samples = np.random.random_sample(len(imgs))
+                img_train:np.ndarray = imgs[idx_samples <= train_test_split]
+                img_test:np.ndarray = imgs[idx_samples > train_test_split]
+                class_train:np.ndarray = classes[idx_samples <= train_test_split]
+                class_test:np.ndarray = classes[idx_samples > train_test_split]
 
             self.img_train = np.array(img_train)
             self.class_train = np.array(class_train)
@@ -177,7 +195,6 @@ class ATTSiameseNNDataLoader(SiameseNNDataLoader):
         :return: NDArray of image pair tuples (one face each) and a matching NDArray of labels (1 = same class, 0 = different class)
         '''
         for t in [TrainTestType.TRAIN, TrainTestType.TEST]:
-
             print(f"generating pairs for {t.name}...")
             pairs = []
             labels = []
@@ -227,11 +244,11 @@ class ATTSiameseNNDataLoader(SiameseNNDataLoader):
     def has_more_batches(self, train_test_type: TrainTestType, ) -> bool:
         assert train_test_type == TrainTestType.TRAIN or train_test_type == TrainTestType.TEST
         if train_test_type == TrainTestType.TRAIN:
-            if self.last_train_batch_idx == len(self.train_pairs):
+            if self.last_train_batch_idx >= len(self.train_pairs):
                 return False
             return True
         else:
-            if self.last_test_batch_idx == len(self.test_pairs):
+            if self.last_test_batch_idx >= len(self.test_pairs):
                 return False
             return True
 
@@ -258,8 +275,10 @@ class ATTSiameseNNDataLoader(SiameseNNDataLoader):
         assert train_test_type == TrainTestType.TRAIN or train_test_type == TrainTestType.TEST
         if batch_size < 0:
             if train_test_type == TrainTestType.TRAIN:
+                self.last_train_batch_idx = len(self.train_pairs)
                 return SiameseNNDataLoader._files_to_images(self.train_pairs), self.train_labels
             else:
+                self.last_test_batch_idx = len(self.test_pairs)
                 return SiameseNNDataLoader._files_to_images(self.test_pairs), self.test_labels
         else:
             if train_test_type == TrainTestType.TRAIN:
@@ -298,15 +317,18 @@ class ATTSiameseNNDataLoader(SiameseNNDataLoader):
         '''
         assert train_test_type == TrainTestType.TRAIN or train_test_type == TrainTestType.TEST
         if train_test_type == TrainTestType.TRAIN:
-            X_samples = self.train_pairs[0:num_samples]
-            y_samples = self.train_labels[0:num_samples]
+            index = np.random.choice(self.train_pairs.shape[0], num_samples, replace=False)
+            X_samples = self.train_pairs[index]
+            y_samples = self.train_labels[index]
         else:
-            X_samples = self.test_pairs[0:num_samples]
-            y_samples = self.test_labels[0:num_samples]
+            index = np.random.choice(self.test_pairs.shape[0], num_samples, replace=False)
+            X_samples = self.test_pairs[index]
+            y_samples = self.test_labels[index]
+
         for idx, val in enumerate(X_samples):
             pair = X_samples[idx]
             label = y_samples[idx]
-            utils.side_by_side_from_arrays(pair[0], pair[1], Path(output_dir, f"sample_{idx}_l_{label}.jpg"))
+            utils.side_by_side_from_paths(pair[0], pair[1], Path(output_dir, f"sample_{idx}_l_{int(label)}.jpg"))
 
 
 class SiameseNeuralNetTrainer():
@@ -445,13 +467,15 @@ if __name__ == '__main__':
 
     # digiface_data_dir = "/Users/dcripe/Pictures/ai/training/digiface/subjects_100000-133332_5_imgs"
     # digiface_data_dir = "/Users/dcripe/Pictures/ai/training/digiface/subjects_100000-100100_5_imgs"
-    digiface_data_dir = "/Users/dcripe/Pictures/ai/training/digiface/subjects_100000-101000_5_imgs"
+    # digiface_data_dir = "/Users/dcripe/Pictures/ai/training/digiface/subjects_100000-101000_5_imgs"
     # digiface_data_dir = "/Users/dcripe/Pictures/ai/training/digiface/subjects_0-0100_72_imgs"
     # digiface_data_dir = "/Users/dcripe/Pictures/ai/training/digiface/subjects_0-1999_72_imgs"
 
+    cripe_data_dir = "/Users/dcripe/Pictures/ai/training/cripe/faces_112x112"
+
     # saved_model:Path = Path("/Users/dcripe/dev/ai/cv_playground/face_detection/siamese_nn.keras")
     saved_model: Path = Path(
-        f"/Users/dcripe/dev/ai/cv_playground/face_detection/models/siamese_nn_digiface_{Path(digiface_data_dir).name}.h5")
+        f"/Users/dcripe/dev/ai/cv_playground/face_detection/models/siamese_nn_cripe_01.h5")
     model: Model = None
     # if saved_model.exists():
     #     print(f"loading model from save {saved_model}")
@@ -468,16 +492,17 @@ if __name__ == '__main__':
     # loader:SiameseNNDataLoader = ATTSiameseNNDataLoader(Path(digiface_data_dir))
     # loader:SiameseNNDataLoader = ATTSiameseNNDataLoader(Path(digiface_data_dir_100))
     loader: SiameseNNDataLoader = ATTSiameseNNDataLoader(
-        Path(digiface_data_dir),
-        max_positive_pairs_per_image=4,
-        max_negative_pairs_per_image=4,
+        # Path(digiface_data_dir),
+        Path(cripe_data_dir),
+        max_positive_pairs_per_image=25,
+        max_negative_pairs_per_image=25,
     )
     loader.load(reload=True)
     loader.generate_pairs_and_labels()
     loader.visual_validation(
         train_test_type=TrainTestType.TRAIN,
         output_dir=Path("/Users/dcripe/dev/ai/cv_playground/out/generated_comps"),
-        num_samples=5
+        num_samples=50
     )
 
     net: SiameseNeuralNetTrainer = SiameseNeuralNetTrainer(model=model, loader=loader)
@@ -485,7 +510,7 @@ if __name__ == '__main__':
     model = net.train(
         # data_load_batch_size=10000,
         data_load_batch_size=-1,
-        # epochs=5,
+        epochs=4,
     )
     model.save(saved_model)
     res = net.validate()

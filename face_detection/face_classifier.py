@@ -18,7 +18,10 @@ ALLOWED_IMAGE_TYPES = ['.jpg','.jpeg']
 DISSIMILARITY_THRESHOLD:float = 0.65
 
 def load_siamese_model() -> Model:
-    saved_model:Path = Path("/Users/dcripe/dev/ai/cv_playground/face_detection/models/siamese_nn_digiface.h5")
+    # saved_model:Path = Path("/Users/dcripe/dev/ai/cv_playground/face_detection/models/siamese_nn_digiface.h5")
+    # saved_model:Path = Path("/Users/dcripe/dev/ai/cv_playground/face_detection/models/siamese_nn_digiface_subjects_100000-101000_5_imgs.h5")
+    saved_model:Path = Path("/Users/dcripe/dev/ai/cv_playground/face_detection/models/siamese_nn_cripe_01.h5")
+    print(f"loading siamese model from {saved_model}")
     model = None
     if saved_model.exists():
         print(f"loading model from save {saved_model}")
@@ -33,7 +36,9 @@ def load_siamese_model() -> Model:
     return model
 
 def load_facenet_model() -> Model:
-    model = load_model('/Users/dcripe/dev/ai/cv_playground/face_detection/models/facenet_keras.h5')
+    saved_model = '/Users/dcripe/dev/ai/cv_playground/face_detection/models/facenet_keras.h5'
+    print(f"loading facenet model from {saved_model}")
+    model = load_model(saved_model)
     return model
 
 MODEL_LOADERS = {

@@ -26,7 +26,7 @@ def visualize_classification(image_dir:Path, out_dir:Path, fd: FaceDetector, fc:
             print(f"no faces in {img_name}; skipping...")
             continue
         image = cv2.imread(str(Path(image_dir, img_name)))
-        for face_img, face_bb in all_faces[img_name]:
+        for face_img, face_bb, face_conf in all_faces[img_name]:
             x, y, w, h = face_bb
             cv2.rectangle(image, (x, y), (x + w, y + h), (0, 255, 0), 5)
             name, score = fc.identify_face(face_img)
@@ -64,7 +64,7 @@ if __name__ == '__main__':
     out_dir: Path = Path("/Users/dcripe/dev/ai/cv_playground/out/generated_comps")
     ref_faces_dir: Path = Path("/Users/dcripe/dev/ai/cv_playground/data/images/face_ref")
     # detector = HaarCascadesFaceDetector()
-    detector = MTCNNFaceDetector()
+    detector = MTCNNFaceDetector(threshold=0.96)
 
     # image shape required by the trained model
     shape:tuple = (112, 112)
